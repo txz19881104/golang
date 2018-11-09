@@ -1,0 +1,4 @@
+数据库连接成功！
+2018/08/28 18:06:14.756 [1;34m[I] [asm_amd64.s:2361]  http server Running on http://:8000[0m
+[ORM]2018/08/28 18:06:26  -[Queries/default] - [  OK /    db.Query /   356.5ms] - [SELECT * FROM EntertainmentDB.UserInfo WHERE UserName = "aaa" AND UserPassword = "aaaaaa";]
+[ORM]2018/08/28 18:06:29  -[Queries/default] - [  OK /    db.Query /   231.0ms] - [SELECT * FROM EntertainmentDB.FictionName WHERE Authority <= 1;]
