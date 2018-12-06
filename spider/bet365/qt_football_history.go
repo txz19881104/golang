@@ -159,6 +159,7 @@ func GetBaseInfo(strHref string, strMatchDate string, arrMatchInfoDB *[]MatchInf
 		}
 
 	})
+	fmt.Println(len(*arrMatchInfoDB), "场")
 }
 
 func GetDetailInfo(strHref string, stMatchInfoDB MatchInfoDB) {
@@ -207,71 +208,72 @@ func GetDetailInfo(strHref string, stMatchInfoDB MatchInfoDB) {
 			s.Find("table > tbody > tr").Each(func(i int, t *goquery.Selection) {
 				pos := strings.Contains(t.Text(), "射门")
 				if pos != false {
-					if (t.Find("td.bg3").Text() == "射门") || (t.Find("td.bg4").Text() == "射门") {
-						temp := strings.Split(t.Text(), "射门")
-						stMatchInfoDB.HTShoot, _ = strconv.ParseInt(temp[0], 10, 64)
-						stMatchInfoDB.VTShoot, _ = strconv.ParseInt(temp[1], 10, 64)
+					if (t.Find("td.bg3").Text() == "射门") || (t.Find("td.bg4").Text() == "射门") ||
+						(t.Find("td.bg3").Text() == "射门次数") || (t.Find("td.bg4").Text() == "射门次数") {
+						stMatchInfoDB.HTShoot, _ = strconv.ParseInt(t.Find("td:nth-child(2)").Text(), 10, 64)
+						stMatchInfoDB.VTShoot, _ = strconv.ParseInt(t.Find("td:nth-child(4)").Text(), 10, 64)
+
 					}
 				}
+
 				pos = strings.Contains(t.Text(), "射正")
 				if pos != false {
-					temp := strings.Split(t.Text(), "射正")
-
-					stMatchInfoDB.HTShooton, _ = strconv.ParseInt(temp[0], 10, 64)
-					stMatchInfoDB.VTShooton, _ = strconv.ParseInt(temp[1], 10, 64)
+					stMatchInfoDB.HTShooton, _ = strconv.ParseInt(t.Find("td:nth-child(2)").Text(), 10, 64)
+					stMatchInfoDB.VTShooton, _ = strconv.ParseInt(t.Find("td:nth-child(4)").Text(), 10, 64)
 				}
 
 				pos = strings.Contains(t.Text(), "角球")
 				if pos != false {
 					if (t.Find("td.bg3").Text() == "角球") || (t.Find("td.bg4").Text() == "角球") {
-						temp := strings.Split(t.Text(), "角球")
-						stMatchInfoDB.HTTotalCorner, _ = strconv.ParseInt(temp[0], 10, 64)
-						stMatchInfoDB.VTTotalCorner, _ = strconv.ParseInt(temp[1], 10, 64)
+						stMatchInfoDB.HTTotalCorner, _ = strconv.ParseInt(t.Find("td:nth-child(2)").Text(), 10, 64)
+						stMatchInfoDB.VTTotalCorner, _ = strconv.ParseInt(t.Find("td:nth-child(4)").Text(), 10, 64)
 					}
 				}
 
 				pos = strings.Contains(t.Text(), "半场角球")
 				if pos != false {
-					temp := strings.Split(t.Text(), "半场角球")
-					stMatchInfoDB.HTHalfCorner, _ = strconv.ParseInt(temp[0], 10, 64)
-					stMatchInfoDB.VTHalfCorner, _ = strconv.ParseInt(temp[1], 10, 64)
+					stMatchInfoDB.HTHalfCorner, _ = strconv.ParseInt(t.Find("td:nth-child(2)").Text(), 10, 64)
+					stMatchInfoDB.VTHalfCorner, _ = strconv.ParseInt(t.Find("td:nth-child(4)").Text(), 10, 64)
 				}
 
 				pos = strings.Contains(t.Text(), "红牌")
 				if pos != false {
-					temp := strings.Split(t.Text(), "红牌")
-					stMatchInfoDB.HTRed, _ = strconv.ParseInt(temp[0], 10, 64)
-					stMatchInfoDB.VTRed, _ = strconv.ParseInt(temp[1], 10, 64)
+					stMatchInfoDB.HTRed, _ = strconv.ParseInt(t.Find("td:nth-child(2)").Text(), 10, 64)
+					stMatchInfoDB.VTRed, _ = strconv.ParseInt(t.Find("td:nth-child(4)").Text(), 10, 64)
 				}
 			})
 		}
 
 		pos = strings.Contains((s.Find("table > tbody > tr:nth-child(1)").Text()), "详细事件")
 		if pos != false {
-
 			s.Find("table > tbody > tr").Each(func(i int, t *goquery.Selection) {
-				temptitle, ok := t.Find("td:nth-child(2) > img").Attr("title")
-				if ok == true {
-					//if strings.Contains(temptitle, "球") != false {
-					if (temptitle == "入球") || (temptitle == "点球") || (temptitle == "乌龙") {
-						//fmt.Println("H:",temptitle,t.Find("td:nth-child(3)").Text())
-						stMatchInfoDB.GoalTime += " H" + t.Find("td:nth-child(3)").Text()
-					}
-				}
 
-				temptitle, ok = t.Find("td:nth-child(4) > img").Attr("title")
-				if ok == true {
-					//if strings.Contains(temptitle, "球") != false {
-					if (temptitle == "入球") || (temptitle == "点球") || (temptitle == "乌龙") {
-						//fmt.Println("G:",temptitle,t.Find("td:nth-child(3)").Text())
-						stMatchInfoDB.GoalTime += " V" + t.Find("td:nth-child(3)").Text()
-					}
-				}
+				stMatchInfoDB.GoalTime = strings.Replace(stMatchInfoDB.GoalTime, "'", "", -1)
 
+				if stMatchInfoDB.GoalTime == "" {
+					s.Find("table > tbody > tr").Each(func(i int, t *goquery.Selection) {
+						tempsrc, ok := t.Find("td:nth-child(2) > img").Attr("src")
+						if (ok == true) && (strings.Contains(tempsrc, "/images/bf_img/1.png") ||
+							strings.Contains(tempsrc, "/images/bf_img/7.png") ||
+							strings.Contains(tempsrc, "/images/bf_img/8.png")) {
+							stMatchInfoDB.GoalTime += " H" + t.Find("td:nth-child(3)").Text()
+						}
+						tempsrc, ok = t.Find("td:nth-child(4) > img").Attr("src")
+						if (ok == true) && (strings.Contains(tempsrc, "/images/bf_img/1.png") ||
+							strings.Contains(tempsrc, "/images/bf_img/7.png") ||
+							strings.Contains(tempsrc, "/images/bf_img/8.png")) {
+							stMatchInfoDB.GoalTime += " V" + t.Find("td:nth-child(3)").Text()
+
+						}
+
+						stMatchInfoDB.GoalTime = strings.Replace(stMatchInfoDB.GoalTime, "'", "", -1)
+					})
+				}
+				//	fmt.Println("")
 			})
-			//	fmt.Println("")
 		}
 	})
+
 	stMatchInfoDB.DetailHref = strHref
 
 	/*插入数据库*/
@@ -281,11 +283,13 @@ func GetDetailInfo(strHref string, stMatchInfoDB MatchInfoDB) {
 		stMatchInfoDB.HTRed, stMatchInfoDB.VTRed, stMatchInfoDB.Asionodd, stMatchInfoDB.Cornerodd, stMatchInfoDB.Numodd, stMatchInfoDB.DetailHref, stMatchInfoDB.GoalTime, stMatchInfoDB.MatchTime)
 	_, err = db.Exec(strSql)
 	if err != nil {
+		fmt.Println("Error is ", err)
 
 		i := 0
 		for ; i < 5; i++ {
 			_, err = db.Exec(strSql)
 			if err != nil {
+				fmt.Println("Error is ", err)
 				time.Sleep(1 * time.Millisecond)
 				continue
 			} else {
@@ -326,8 +330,9 @@ func InitNumCpu() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	db, _ = sql.Open("mysql", "txz:passwd@tcp(198.13.54.7:3306)/LianjiaDB?charset=utf8")
-	db.SetMaxOpenConns(100)
+
 	db.SetMaxIdleConns(50)
+	db.SetMaxOpenConns(100)
 	db.Ping()
 }
 
@@ -340,16 +345,18 @@ func main() {
 	if true {
 		strUrlKeyword := "http://bf.win007.com/football/hg/Over_"
 		//20150401-20151231 20161020-20161231
-		dayarray := getdateArray("2016-12-20", "2016-12-31")
+		dayarray := getdateArray("2018-11-28", "2018-11-30")
 		//dayarray = []string{"20150319"}
 
 		for _, value := range dayarray {
 			var arrMatchInfoDB []MatchInfoDB
 
 			strUrl := strUrlKeyword + value + ".htm"
-			fmt.Println(value)
+			fmt.Print(value, " ")
 
+			timeUse := time.Now() // get current time
 			GetBaseInfo(strUrl, value, &arrMatchInfoDB)
+			fmt.Print(">->-> 共用时: ", time.Since(timeUse))
 
 			wg.Add(len(arrMatchInfoDB))
 			for i := 0; i < len(arrMatchInfoDB); i++ {
@@ -357,6 +364,7 @@ func main() {
 				strUrl = "http://live.win007.com/detail/" + arrMatchInfoDB[i].MatchID + "cn.htm"
 				go GetDetailInfo(strUrl, arrMatchInfoDB[i])
 			}
+			fmt.Println(">->-> 共用时: ", time.Since(timeUse))
 		}
 		wg.Wait()
 	}
