@@ -61,8 +61,7 @@ type User struct {
 	UserSetting   string `orm:"column(user_setting)"`
 }
 
-/*下载每天数据的数据库结构*/
-type MatchInfo struct {
+type BasketballMatchInfo struct {
 	ID          int     `orm:"column(pk_id)"`
 	Name        string  `orm:"column(name)"`
 	HTName      string  `orm:"column(ht_name)"`
@@ -80,8 +79,96 @@ type MatchInfo struct {
 	MatchTime   string  `orm:"column(match_time)"`
 }
 
+type BasketballAnalyseInfo struct {
+	MatchCount    int64
+	HTFirstScore  int64
+	HTSecondScore int64
+	HTThirdScore  int64
+	HTFourthScore int64
+	HTFirstBig    float64
+	HTSecondBig   float64
+	HTThirdBig    float64
+	HTFourthBig   float64
+	HTMatchBig    int64
+	VTFirstScore  int64
+	VTSecondScore int64
+	VTThirdScore  int64
+	VTFourthScore int64
+	VTFirstBig    float64
+	VTSecondBig   float64
+	VTThirdBig    float64
+	VTFourthBig   float64
+	VTMatchBig    int64
+}
+
+type FootballMatchInfo struct {
+	ID            int    `orm:"column(pk_id)"`
+	MatchID       string `orm:"column(match_id)"`
+	Name          string `orm:"column(name)"`
+	HTName        string `orm:"column(ht_name)"`
+	VTName        string `orm:"column(vt_name)"`
+	HTTotalScore  int64  `orm:"column(ht_total_score)"`
+	VTTotalScore  int64  `orm:"column(vt_total_score)"`
+	HTHalfScore   int64  `orm:"column(ht_half_score)"`
+	VTHalfScore   int64  `orm:"column(vt_half_score)"`
+	HTTotalCorner int64  `orm:"column(ht_total_corner)"`
+	VTTotalCorner int64  `orm:"column(vt_total_corner)"`
+	HTHalfCorner  int64  `orm:"column(ht_half_corner)"`
+	VTHalfCorner  int64  `orm:"column(vt_half_corner)"`
+	HTShoot       int64  `orm:"column(ht_shoot)"`
+	VTShoot       int64  `orm:"column(vt_shoot)"`
+	HTShooton     int64  `orm:"column(ht_shoot_on)"`
+	VTShooton     int64  `orm:"column(vt_shoot_on)"`
+	HTRed         int64  `orm:"column(ht_red)"`
+	VTRed         int64  `orm:"column(vt_red)"`
+	Asionodd      string `orm:"column(asion_odd)"`
+	Cornerodd     string `orm:"column(corner_odd)"`
+	Numodd        string `orm:"column(num_odd)"`
+	DetailHref    string `orm:"column(detail_href)"`
+	GoalTime      string `orm:"column(goal_time)"`
+	MatchTime     string `orm:"column(match_time)"`
+	HGoalTime     string
+	VGoalTime     string
+	EventSta      string
+	NowMatchTime  int
+}
+
+type FootballGoalStatics struct {
+	MatchTotal         int64                            /*比赛总数*/
+	GoalTotal          int64                            /*进球总数*/
+	UpGoalCount        int64                            /*上半场进球总数*/
+	DownGoalCount      int64                            /*下半场进球总数*/
+	UpHaveGoalMatch    int64                            /*上半场有球比赛总数*/
+	DownHaveGoalMatch  int64                            /*下半场有球比赛总数*/
+	AllHaveGoalMatch   int64                            /*全场有球比赛总数*/
+	HaveCornerMatch    int64                            /*可统计有角球比赛总数*/
+	CornerTotal        int64                            /*角球总数*/
+	TotalGoalTime      int64                            /*可统计进球时间进球总数*/
+	TotalGoalTimeMatch int64                            /*可统计进球时间比赛总数*/
+	ShootCount         int64                            /*射门总数*/
+	ShootOnCount       int64                            /*射正总数*/
+	TotalShootMatch    int64                            /*射门有效比赛数*/
+	MapFootballGoal    map[string]FootballGoalNumByTime /*进球时间分布*/
+	MapUpEffectDown    map[string]FootballGoalEffect    /*上半场对下半场影响*/
+}
+
+type FootballGoalNumByTime struct {
+	GoalNum      int64
+	GoalMatchNum int64
+	HaveGoal     bool
+}
+
+type FootballGoalEffect struct {
+	GoalHaveGoalMatch  int64
+	GoalTotalGoalMatch int64
+}
+
 var (
-	ArrMatchInfo = []MatchInfo{}
+	MapBasketballMatchInfo = make(map[string]([]BasketballMatchInfo))
+	MapFootballMatchInfo   = make(map[string]([]FootballMatchInfo))
+	MapFootballGoalStatics = make(map[string](FootballGoalStatics))
+
+	//ArrMatchInfo = []MatchInfo{}
 )
 
 func init() {

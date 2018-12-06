@@ -24,4 +24,7 @@ func init() {
 
 	beego.Router("/api/Live/BasketBall", &controllers.GetLiveBasketBall{})
 	beego.Router("/api/Finish/BasketballAnalyse/:Name/:HorV/:TeamName", &controllers.GetBasketBallAnalyse{})
+
+	beego.Router("/api/Live/FootBall", &controllers.GetLiveFootBall{})
+	beego.Router("/api/Finish/FootballAnalyse/:Name", &controllers.GetFootBallAnalyse{})
 }
