@@ -131,6 +131,10 @@ type FootballMatchInfo struct {
 	VGoalTime     string
 	EventSta      string
 	NowMatchTime  int
+	HTNameAlias   string
+	VTNameAlias   string
+	HTStatic      string
+	VTStatic      string
 }
 
 type FootballGoalStatics struct {
@@ -164,15 +168,19 @@ type FootballGoalEffect struct {
 }
 
 var (
-	MapBasketballMatchInfo = make(map[string]([]BasketballMatchInfo))
-	MapFootballMatchInfo   = make(map[string]([]FootballMatchInfo))
-	MapFootballGoalStatics = make(map[string](FootballGoalStatics))
+	MapBasketballMatchInfo   = make(map[string]([]BasketballMatchInfo))
+	MapFootballMatchInfo     = make(map[string]([]FootballMatchInfo))
+	MapFootballOverMatchInfo = make(map[string]([]FootballMatchInfo))
+	MapFootballGoalStatics   = make(map[string](FootballGoalStatics))
 
 	//ArrMatchInfo = []MatchInfo{}
 )
 
 func init() {
 	orm.RegisterDriver("mysql", orm.DRMySQL)
-	orm.RegisterDataBase("default", "mysql", "txz:passwd@tcp(198.13.54.7:3306)/EntertainmentDB?charset=utf8", 1000, 2000)
+	orm.RegisterDataBase("default", "mysql", "root:passwd@tcp(149.129.79.183:3306)/EntertainmentDB?charset=utf8")
+	orm.SetMaxIdleConns("default", 1000)
+	orm.SetMaxOpenConns("default", 1000)
+
 	fmt.Println("数据库连接成功！")
 }

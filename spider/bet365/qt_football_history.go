@@ -48,7 +48,7 @@ type MatchInfoDB struct {
 }
 
 var wg sync.WaitGroup
-var goroutine_cnt = make(chan int, 100) /*最大协程数量*/
+var goroutine_cnt = make(chan int, 70) /*最大协程数量*/
 var db *sql.DB
 
 func DecodeToGBK(text string) (string, error) {
@@ -70,13 +70,13 @@ func GetBaseInfo(strHref string, strMatchDate string, arrMatchInfoDB *[]MatchInf
 	parResultHref.RawQuery = parResultHref.Query().Encode()
 	httpSearchRespHref, err := http.Get(parResultHref.String())
 
-	if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) {
+	if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) || httpSearchRespHref.Body == nil {
 
 		i := 0
 		for ; i < 50; i++ {
 			time.Sleep(1 * time.Millisecond)
 			httpSearchRespHref, err := http.Get(parResultHref.String())
-			if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) {
+			if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) || httpSearchRespHref.Body == nil {
 				continue
 			} else {
 				break
@@ -102,7 +102,34 @@ func GetBaseInfo(strHref string, strMatchDate string, arrMatchInfoDB *[]MatchInf
 
 	docHref.Find("tbody table tbody tbody tr").Each(func(i int, s *goquery.Selection) {
 
-		var stMatchInfoDB MatchInfoDB
+		stMatchInfoDB := MatchInfoDB{
+			ID:            0,
+			MatchID:       "",
+			Name:          "",
+			HTName:        "",
+			VTName:        "",
+			HTTotalScore:  -1,
+			VTTotalScore:  -1,
+			HTHalfScore:   -1,
+			VTHalfScore:   -1,
+			HTTotalCorner: -1,
+			VTTotalCorner: -1,
+			HTHalfCorner:  -1,
+			VTHalfCorner:  -1,
+			HTShoot:       -1,
+			VTShoot:       -1,
+			HTShooton:     -1,
+			VTShooton:     -1,
+			HTRed:         -1,
+			VTRed:         -1,
+			Asionodd:      "",
+			Cornerodd:     "",
+			Numodd:        "",
+			DetailHref:    "",
+			GoalTime:      "",
+			MatchTime:     "",
+		}
+
 		var strData [10]string
 		if i > 0 {
 			s.Find("td").Each(func(j int, ss *goquery.Selection) {
@@ -201,6 +228,28 @@ func GetDetailInfo(strHref string, stMatchInfoDB MatchInfoDB) {
 	}
 	defer httpSearchRespHref.Body.Close()
 
+	strTeamName2 := docHref.Find("#home > a > span").Text()
+	if (strTeamName2 != "") && (strTeamName2 != stMatchInfoDB.HTName) {
+		stMatchInfoDB.HTName = strTeamName2
+		//fmt.Println(item.Hostteam ,item.Hostteam2)
+	}
+	strTeamName2 = docHref.Find("#guest > a > span").Text()
+	if (strTeamName2 != "") && (strTeamName2 != stMatchInfoDB.VTName) {
+		stMatchInfoDB.VTName = strTeamName2
+		//fmt.Println(item.Guestteam ,item.Guestteam2)
+	}
+
+	if strings.Contains(stMatchInfoDB.HTName, "]") {
+		stMatchInfoDB.HTName = strings.Split(stMatchInfoDB.HTName, "]")[1]
+	}
+
+	if strings.Contains(stMatchInfoDB.VTName, "[") {
+		stMatchInfoDB.VTName = strings.Split(stMatchInfoDB.VTName, "[")[0]
+	}
+
+	stMatchInfoDB.HTName = strings.TrimSpace(stMatchInfoDB.HTName)
+	stMatchInfoDB.VTName = strings.TrimSpace(stMatchInfoDB.VTName)
+
 	docHref.Find("#matchData > div").Each(func(i int, s *goquery.Selection) {
 
 		pos := strings.Contains((s.Find("table > tbody > tr:nth-child(1)").Text()), "本场技术统计")
@@ -256,14 +305,21 @@ func GetDetailInfo(strHref string, stMatchInfoDB MatchInfoDB) {
 						if (ok == true) && (strings.Contains(tempsrc, "/images/bf_img/1.png") ||
 							strings.Contains(tempsrc, "/images/bf_img/7.png") ||
 							strings.Contains(tempsrc, "/images/bf_img/8.png")) {
-							stMatchInfoDB.GoalTime += " H" + t.Find("td:nth-child(3)").Text()
+							temptime := t.Find("td:nth-child(3)").Text()
+							if stMatchInfoDB.GoalTime != "" {
+								stMatchInfoDB.GoalTime += " "
+							}
+							stMatchInfoDB.GoalTime += "H" + temptime
 						}
 						tempsrc, ok = t.Find("td:nth-child(4) > img").Attr("src")
 						if (ok == true) && (strings.Contains(tempsrc, "/images/bf_img/1.png") ||
 							strings.Contains(tempsrc, "/images/bf_img/7.png") ||
 							strings.Contains(tempsrc, "/images/bf_img/8.png")) {
-							stMatchInfoDB.GoalTime += " V" + t.Find("td:nth-child(3)").Text()
-
+							temptime := t.Find("td:nth-child(3)").Text()
+							if stMatchInfoDB.GoalTime != "" {
+								stMatchInfoDB.GoalTime += " "
+							}
+							stMatchInfoDB.GoalTime += "V" + temptime
 						}
 
 						stMatchInfoDB.GoalTime = strings.Replace(stMatchInfoDB.GoalTime, "'", "", -1)
@@ -332,7 +388,7 @@ func InitNumCpu() {
 	db, _ = sql.Open("mysql", "txz:passwd@tcp(198.13.54.7:3306)/LianjiaDB?charset=utf8")
 
 	db.SetMaxIdleConns(50)
-	db.SetMaxOpenConns(100)
+	db.SetMaxOpenConns(50)
 	db.Ping()
 }
 
@@ -345,7 +401,7 @@ func main() {
 	if true {
 		strUrlKeyword := "http://bf.win007.com/football/hg/Over_"
 		//20150401-20151231 20161020-20161231
-		dayarray := getdateArray("2018-11-28", "2018-11-30")
+		dayarray := getdateArray("2018-12-01", "2018-12-08")
 		//dayarray = []string{"20150319"}
 
 		for _, value := range dayarray {

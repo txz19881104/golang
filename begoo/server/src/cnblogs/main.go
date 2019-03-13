@@ -32,9 +32,9 @@ func main() {
 
 	go GetFootballAnalyse(5 * 24 * 60 * 60)
 
-	go GetBasketBallLive(10)
+	go GetBasketBallLive(60)
 
-	go GetFootBallLive(10)
+	go GetFootBallLive(60)
 
 	beego.Run()
 }
@@ -151,14 +151,14 @@ func GetFootballAnalyseInfo() {
 				stGoalStatics.AllHaveGoalMatch++
 			}
 
-			if stMatchInfo[i].HTTotalCorner > 0 && stMatchInfo[i].VTTotalCorner > 0 {
+			if stMatchInfo[i].HTTotalCorner >= 0 && stMatchInfo[i].VTTotalCorner >= 0 {
 				/*可统计有角球比赛总数*/
 				stGoalStatics.HaveCornerMatch++
 				/*角球总数*/
 				stGoalStatics.CornerTotal = stGoalStatics.CornerTotal + stMatchInfo[i].HTTotalCorner + stMatchInfo[i].VTTotalCorner
 			}
 
-			if stMatchInfo[i].HTShoot > 0 && stMatchInfo[i].VTShoot > 0 {
+			if stMatchInfo[i].HTShoot >= 0 && stMatchInfo[i].VTShoot >= 0 {
 				/*射门有效比赛数*/
 				stGoalStatics.TotalShootMatch++
 				/*射门总数*/
@@ -289,8 +289,8 @@ func getMatchDetail(mapDetail map[string]string, str []string) {
 	mapDetail["状态"] = str[2]
 	mapDetail["时间1"] = str[3]
 	mapDetail["时间2"] = str[4]
-	mapDetail["主队"] = str[5]
-	mapDetail["客队"] = str[6]
+	mapDetail["主队"] = strings.TrimSpace(str[5])
+	mapDetail["客队"] = strings.TrimSpace(str[6])
 	mapDetail["主队进球"] = str[7]
 	mapDetail["客队进球"] = str[8]
 	mapDetail["主队半场进球"] = str[9]
@@ -468,6 +468,7 @@ func getShoot(item *models.FootballMatchInfo) string {
 		wg.Done()
 		return getErrorLine()
 	}
+	defer httpSearchRespHref.Body.Close()
 
 	dec := mahonia.NewDecoder("utf-8")
 	rd := dec.NewReader(httpSearchRespHref.Body)
@@ -479,7 +480,12 @@ func getShoot(item *models.FootballMatchInfo) string {
 		wg.Done()
 		return getErrorLine()
 	}
-	defer httpSearchRespHref.Body.Close()
+
+	strHTNameAlias := docHref.Find("#home > a > span").Text()
+	item.HTNameAlias = strings.TrimSpace(strHTNameAlias)
+
+	strHVNameAlias := docHref.Find("#guest > a > span").Text()
+	item.VTNameAlias = strings.TrimSpace(strHVNameAlias)
 
 	docHref.Find("#matchData > div").Each(func(i int, s *goquery.Selection) {
 
@@ -592,13 +598,13 @@ func getMatchs(strHref string) (string, error) {
 	parResultHref.RawQuery = parResultHref.Query().Encode()
 	httpSearchRespHref, err := http.Get(parResultHref.String())
 
-	if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) {
+	if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) || httpSearchRespHref.Body == nil {
 
 		i := 0
 		for ; i < 50; i++ {
 			time.Sleep(1 * time.Millisecond)
-			httpSearchRespHref, err := http.Get(parResultHref.String())
-			if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) {
+			httpSearchRespHref, err = http.Get(parResultHref.String())
+			if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) || httpSearchRespHref.Body == nil {
 				continue
 			} else {
 				break
@@ -610,8 +616,10 @@ func getMatchs(strHref string) (string, error) {
 			return "", err
 		}
 	}
+	defer httpSearchRespHref.Body.Close()
 
 	dec := mahonia.NewDecoder("utf-8")
+
 	rd := dec.NewReader(httpSearchRespHref.Body)
 	docHref, err := goquery.NewDocumentFromReader(rd)
 
@@ -620,7 +628,6 @@ func getMatchs(strHref string) (string, error) {
 
 		return "", err
 	}
-	defer httpSearchRespHref.Body.Close()
 
 	return docHref.Text(), nil
 }
@@ -668,6 +675,19 @@ func GetFootBallLiveInfo() {
 			models.MapFootballMatchInfo[arrNowDetail[i].Name] = ArrMatchInfo
 		}
 	}
+
+	models.MapFootballOverMatchInfo = make(map[string][]models.FootballMatchInfo)
+	for i := 0; i < len(arrOverDetail); i++ {
+		/*查看元素在集合中是否存在 */
+		_, ok := models.MapFootballOverMatchInfo[arrOverDetail[i].Name] /*如果确定是真实的,则存在,否则不存在 */
+		if ok {
+			models.MapFootballOverMatchInfo[arrOverDetail[i].Name] = append(models.MapFootballOverMatchInfo[arrOverDetail[i].Name], arrOverDetail[i])
+		} else {
+			ArrMatchInfo := []models.FootballMatchInfo{}
+			ArrMatchInfo = append(ArrMatchInfo, arrOverDetail[i])
+			models.MapFootballOverMatchInfo[arrOverDetail[i].Name] = ArrMatchInfo
+		}
+	}
 	//getMatchColors(&arrNowDetail)
 
 }
@@ -682,19 +702,21 @@ func GetBasketBallLiveInfo() {
 	parResultHref.RawQuery = parResultHref.Query().Encode()
 	httpSearchRespHref, err := http.Get(parResultHref.String())
 
-	if err != nil {
+	if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) || httpSearchRespHref.Body == nil {
 
 		i := 0
-		for ; i < 5; i++ {
+		for ; i < 50; i++ {
+			time.Sleep(1 * time.Millisecond)
 			httpSearchRespHref, err = http.Get(parResultHref.String())
-			if err != nil {
+			if httpSearchRespHref == nil || err != nil || (httpSearchRespHref != nil && httpSearchRespHref.StatusCode != 200) || httpSearchRespHref.Body == nil {
 				continue
 			} else {
 				break
 			}
 		}
-		if i == 5 {
-			fmt.Println("Error is ", err)
+		if i == 50 {
+			fmt.Println(strHref, "download failed")
+
 			return
 		}
 	} else {
@@ -704,7 +726,6 @@ func GetBasketBallLiveInfo() {
 	defer httpSearchRespHref.Body.Close()
 
 	docHref, err := goquery.NewDocumentFromReader(httpSearchRespHref.Body)
-
 	if err != nil {
 		return
 	}

@@ -6,6 +6,8 @@ import (
 	"github.com/astaxie/beego"
 	"github.com/astaxie/beego/orm"
 	_ "github.com/go-sql-driver/mysql"
+	"strconv"
+	"strings"
 )
 
 type MainController struct {
@@ -69,6 +71,10 @@ type GetLiveFootBall struct {
 }
 
 type GetFootBallAnalyse struct {
+	beego.Controller
+}
+
+type GetFootBallTeamAnalyse struct {
 	beego.Controller
 }
 
@@ -177,20 +183,41 @@ func (this *Chapter) Get() {
 
 	strName := this.Ctx.Input.Param(":name")
 	strID := this.Ctx.Input.Param(":id")
+	strBeginNum := this.Ctx.Input.Param(":begin")
 
+	nBeginNum, _ := strconv.Atoi(strBeginNum)
+	strEndNum := strconv.Itoa(nBeginNum + 400)
+
+	var nMaxChapter []int
 	if "Comic" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_comic_chapter WHERE fk_id=" + strID + " ORDER BY chapter_num ASC;"
+		strSql = "SELECT MAX(chapter_num) FROM EntertainmentDB.tbl_comic_chapter  WHERE fk_id = " + strID + ";"
+
+		nNum, err = o.Raw(strSql).QueryRows(&nMaxChapter)
+		fmt.Println("nMaxChapter", nMaxChapter[0])
+		if err != nil || nNum <= 0 {
+			nMaxChapter[0] = 0
+		}
+
+		strSql = "SELECT * FROM EntertainmentDB.tbl_comic_chapter WHERE fk_id=" + strID + " and chapter_num > " + strBeginNum + " and chapter_num <=" + strEndNum + " ORDER BY chapter_num ASC;"
 		var stComicChapters []models.ComicChapter
 		nNum, err = o.Raw(strSql).QueryRows(&stComicChapters)
 		if err == nil && nNum > 0 {
-			this.Data["json"] = map[string]interface{}{"data": stComicChapters}
+			this.Data["json"] = map[string]interface{}{"data": stComicChapters, "max_chapter": nMaxChapter[0]}
 		}
 	} else if "Fiction" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_fiction_chapter WHERE fk_id	=" + strID + " ORDER BY chapter_num ASC;"
+		strSql = "SELECT MAX(chapter_num) FROM EntertainmentDB.tbl_fiction_chapter  WHERE fk_id = " + strID + ";"
+
+		nNum, err = o.Raw(strSql).QueryRows(&nMaxChapter)
+		fmt.Println("nMaxChapter", nMaxChapter[0])
+		if err != nil || nNum <= 0 {
+			nMaxChapter[0] = 0
+		}
+
+		strSql = "SELECT * FROM EntertainmentDB.tbl_fiction_chapter WHERE fk_id	=" + strID + " and chapter_num > " + strBeginNum + " and chapter_num <=" + strEndNum + " ORDER BY chapter_num ASC;"
 		var stFictionChapter []models.FictionChapter
 		nNum, err = o.Raw(strSql).QueryRows(&stFictionChapter)
 		if err == nil && nNum > 0 {
-			this.Data["json"] = map[string]interface{}{"data": stFictionChapter}
+			this.Data["json"] = map[string]interface{}{"data": stFictionChapter, "max_chapter": nMaxChapter[0]}
 		}
 	}
 
@@ -554,8 +581,16 @@ func (this *GetBasketBallAnalyse) Get() {
 }
 
 func (this *GetLiveFootBall) Get() {
+	MapGoalStatics := make(map[string](models.FootballGoalStatics))
 
-	this.Data["json"] = map[string]interface{}{"status": 1, "data": models.MapFootballMatchInfo}
+	for key, _ := range models.MapFootballMatchInfo {
+		_, ok := MapGoalStatics[key] /*如果确定是真实的,则存在,否则不存在 */
+		if !ok {
+			MapGoalStatics[key] = models.MapFootballGoalStatics[key]
+		}
+	}
+
+	this.Data["json"] = map[string]interface{}{"status": 1, "data": MapGoalStatics}
 
 	this.ServeJSON()
 	this.StopRun()
@@ -564,13 +599,84 @@ func (this *GetLiveFootBall) Get() {
 func (this *GetFootBallAnalyse) Get() {
 	strName := this.Ctx.Input.Param(":Name")
 
-	_, ok := models.MapFootballGoalStatics[strName]
+	_, ok := models.MapFootballMatchInfo[strName]
 	fmt.Println(ok, strName)
 	if ok {
-		this.Data["json"] = map[string]interface{}{"status": 1, "analyse": models.MapFootballGoalStatics[strName]}
+		this.Data["json"] = map[string]interface{}{"status": 1, "data": models.MapFootballMatchInfo[strName], "over": models.MapFootballOverMatchInfo[strName], "analyse": models.MapFootballGoalStatics[strName]}
 		fmt.Println(models.MapFootballGoalStatics[strName])
 	} else {
 		this.Data["json"] = map[string]interface{}{"status": -1}
+	}
+
+	this.ServeJSON()
+	this.StopRun()
+}
+
+func (this *GetFootBallTeamAnalyse) Get() {
+	var (
+		strSql     string
+		strStatics string
+		nNum       int64
+		err        error
+	)
+
+	orm.Debug = true
+	o := orm.NewOrm()
+
+	strHV := this.Ctx.Input.Param(":HorV")
+	strName := this.Ctx.Input.Param(":Name")
+	strTeamName := this.Ctx.Input.Param(":TeamName")
+	strNameAlias := this.Ctx.Input.Param(":NameAlias")
+
+	var stMatchInfo []models.FootballMatchInfo
+
+	strSql = fmt.Sprintf("SELECT * FROM Bet365.leisu_football_data where (%s_name like \"%s\" or %s_name like \"%s\") and name like \"%s\" and match_time like \"2018%%\" ORDER BY match_time desc LIMIT 15;", strHV, strTeamName, strHV, strNameAlias, strName)
+	nNum, err = o.Raw(strSql).QueryRows(&stMatchInfo)
+
+	var fTotalGoalTime, f75to90MatchNum, fZeroMatchNum, fUpZeroMatchNum, fDownZeroMatchNum float64 = 0, 0, 0, 0, 0
+	for i := 0; i < len(stMatchInfo); i++ {
+		nHTScore := stMatchInfo[i].HTTotalScore - stMatchInfo[i].HTHalfScore
+		nVTScore := stMatchInfo[i].VTTotalScore - stMatchInfo[i].VTHalfScore
+
+		if (stMatchInfo[i].HTTotalScore + stMatchInfo[i].VTTotalScore) == 0 {
+			fTotalGoalTime++
+			fZeroMatchNum++
+		}
+
+		if (stMatchInfo[i].HTHalfScore + stMatchInfo[i].VTHalfScore) == 0 {
+			fUpZeroMatchNum++
+		}
+
+		if (nHTScore + nVTScore) == 0 {
+			fUpZeroMatchNum++
+		}
+
+		arrGoalTime := strings.Split(stMatchInfo[i].GoalTime[1:], " ")
+		for j := 0; j < len(arrGoalTime); j++ {
+
+			strTime := arrGoalTime[j][1:]
+			nTime, _ := strconv.Atoi(strTime)
+
+			/*可统计进球时间比赛总数*/
+			fTotalGoalTime++
+			if nTime > 75 && nTime <= 90 {
+				f75to90MatchNum++
+				break
+			}
+
+		}
+
+		fUpZero := (fTotalGoalTime - fUpZeroMatchNum) / fTotalGoalTime
+		fDownZero := (fTotalGoalTime - fDownZeroMatchNum) / fTotalGoalTime
+		fZero := (fTotalGoalTime - fZeroMatchNum) / fTotalGoalTime
+		f75to90 := f75to90MatchNum / fTotalGoalTime
+		strStatics = fmt.Sprintf("%.0f/%.2f/%.2f/%.2f/%.2f", fTotalGoalTime, fUpZero, fDownZero, fZero, f75to90)
+	}
+
+	if err == nil && nNum > 0 {
+		this.Data["json"] = map[string]interface{}{"status": 1, "data": strStatics}
+	} else {
+		this.Data["json"] = map[string]interface{}{"status": -1, "err": err}
 	}
 
 	this.ServeJSON()

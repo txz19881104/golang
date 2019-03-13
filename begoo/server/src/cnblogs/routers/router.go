@@ -12,7 +12,7 @@ func init() {
 	beego.Router("/api/:authority/SearchResult/:name/All/:keyword", &controllers.NameKeyword{})
 	beego.Router("/api/:authority/SearchResult/:name/Type/:datatype", &controllers.DataType{})
 
-	beego.Router("/api/Name/:name/Chapter/:id", &controllers.Chapter{})
+	beego.Router("/api/Name/:name/Chapter/:id/:begin", &controllers.Chapter{})
 	beego.Router("/api/Name/:name/:id/ChapterByNum/:num", &controllers.ChapterNum{})
 	beego.Router("/api/Name/:name/:id/Chapter/:num", &controllers.ChapterContent{})
 
@@ -27,4 +27,5 @@ func init() {
 
 	beego.Router("/api/Live/FootBall", &controllers.GetLiveFootBall{})
 	beego.Router("/api/Finish/FootballAnalyse/:Name", &controllers.GetFootBallAnalyse{})
+	beego.Router("/api/Finish/FootBallTeamAnalyse/:Name/:HorV/:TeamName/:NameAlias", &controllers.GetFootBallTeamAnalyse{})
 }
