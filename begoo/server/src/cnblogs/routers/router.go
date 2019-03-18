@@ -8,24 +8,30 @@ import (
 func init() {
 	beego.Router("/", &controllers.MainController{})
 
-	beego.Router("/api/:authority/Name/:name", &controllers.Name{})
-	beego.Router("/api/:authority/SearchResult/:name/All/:keyword", &controllers.NameKeyword{})
-	beego.Router("/api/:authority/SearchResult/:name/Type/:datatype", &controllers.DataType{})
+	/*娱乐：查找*/
+	beego.Router("/Api/Entertainment/:authority/Name/:name", &controllers.Name{})
+	beego.Router("/Api/Entertainment/:authority/SearchResult/:name/All/:keyword", &controllers.NameKeyword{})
+	beego.Router("/Api/Entertainment/:authority/SearchResult/:name/Type/:datatype", &controllers.DataType{})
 
-	beego.Router("/api/Name/:name/Chapter/:id/:begin", &controllers.Chapter{})
-	beego.Router("/api/Name/:name/:id/ChapterByNum/:num", &controllers.ChapterNum{})
-	beego.Router("/api/Name/:name/:id/Chapter/:num", &controllers.ChapterContent{})
+	/*娱乐：漫画及小说*/
+	beego.Router("/Api/Entertainment/:name/Chapter/:id/:begin", &controllers.Chapter{})
+	beego.Router("/Api/Entertainment/:name/:id/ChapterByNum/:num", &controllers.ChapterNum{})
+	beego.Router("/Api/Entertainment/:name/:id/Chapter/:num", &controllers.ChapterContent{})
 
-	beego.Router("/api/Register", &controllers.Register{})
-	beego.Router("/api/Login", &controllers.Login{})
-	beego.Router("/api/ChangeSetting", &controllers.ChangeSetting{})
-	beego.Router("/api/UserCookie", &controllers.UserCookie{})
-	beego.Router("/api/Type/:type/User/:user/NameID/:nameid", &controllers.GetCookie{})
+	/*用户配置*/
+	beego.Router("/Api/Check/UserToken", &controllers.CheckUserToken{})
+	beego.Router("/Api/Register", &controllers.Register{})
+	beego.Router("/Api/Login", &controllers.Login{})
+	beego.Router("/Api/User/ChangeSetting", &controllers.ChangeSetting{})
+	beego.Router("/Api/User/Cookie", &controllers.UserCookie{})
+	beego.Router("/Api/User/Type/:type/User/:user/NameID/:nameid", &controllers.GetCookie{})
 
-	beego.Router("/api/Live/BasketBall", &controllers.GetLiveBasketBall{})
-	beego.Router("/api/Finish/BasketballAnalyse/:Name/:HorV/:TeamName", &controllers.GetBasketBallAnalyse{})
+	/*运动：篮球*/
+	beego.Router("/Api/Sports/BasketBall/Live", &controllers.GetLiveBasketBall{})
+	beego.Router("/Api/Sports/Basketball/Finish/Analyse/:Name/:HorV/:TeamName", &controllers.GetBasketBallAnalyse{})
 
-	beego.Router("/api/Live/FootBall", &controllers.GetLiveFootBall{})
-	beego.Router("/api/Finish/FootballAnalyse/:Name", &controllers.GetFootBallAnalyse{})
-	beego.Router("/api/Finish/FootBallTeamAnalyse/:Name/:HorV/:TeamName/:NameAlias", &controllers.GetFootBallTeamAnalyse{})
+	/*运动：足球*/
+	beego.Router("/Api/Sports/FootBall/Live", &controllers.GetLiveFootBall{})
+	beego.Router("/Api/Sports/FootBall/Finish/Analyse/:Name", &controllers.GetFootBallAnalyse{})
+	beego.Router("/Api/Sports/FootBall/Finish/TeamAnalyse/:Name/:HorV/:TeamName/:NameAlias", &controllers.GetFootBallTeamAnalyse{})
 }

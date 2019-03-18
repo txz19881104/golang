@@ -4,10 +4,21 @@ import (
 	"cnblogs/models"
 	"fmt"
 	"github.com/astaxie/beego"
+	"github.com/astaxie/beego/context"
 	"github.com/astaxie/beego/orm"
+	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/garyburd/redigo/redis"
 	_ "github.com/go-sql-driver/mysql"
+	//"net/http"
 	"strconv"
 	"strings"
+	"time"
+)
+
+const (
+	Success    = 0
+	Failed     = -1
+	TokenError = "TokenError"
 )
 
 type MainController struct {
@@ -78,10 +89,100 @@ type GetFootBallTeamAnalyse struct {
 	beego.Controller
 }
 
+type CheckUserToken struct {
+	beego.Controller
+}
+
+var filterUser = func(ctx *context.Context) {
+
+	token := ctx.Input.Header("Token")
+
+	bFind := CheckToken(token)
+
+	//验证Token是否合法
+	if !bFind {
+		fmt.Println("token check failed")
+		ctx.ResponseWriter.Write([]byte(TokenError))
+		//http.Error(ctx.ResponseWriter, "Token verification not pass", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Println("Find token:", bFind)
+}
+
+func init() {
+	//访问接口前验证token
+	//beego.InsertFilter("/Live|Finish/*", beego.BeforeRouter, filterUser)
+	beego.InsertFilter("/Api/Sports/*", beego.BeforeRouter, filterUser)
+	beego.InsertFilter("/Api/Check/*", beego.BeforeRouter, filterUser)
+}
+
+type Token struct {
+	Token string `json:"token"`
+}
+
+// 校验token是否有效
+func CheckToken(token string) (b bool) {
+
+	t, err := jwt.Parse(token, func(*jwt.Token) (interface{}, error) {
+		return []byte(beego.AppConfig.String("jwtkey")), nil
+	})
+
+	if err != nil {
+		fmt.Println("转换为jwt claims失败.", err)
+		return false
+	}
+
+	conn, err := redis.Dial("tcp", "www.tangxinzhu.com:6379")
+	if err != nil {
+		fmt.Println("connect redis error :", err)
+		return
+	}
+	conn.Do("AUTH", "passwd")
+	defer conn.Close()
+
+	strGettoken, err := redis.String(conn.Do("GET", t.Claims.(jwt.MapClaims)["nameid"]))
+	if err != nil {
+		return false
+	} else {
+		fmt.Printf("Get %s: %s \n", t.Claims.(jwt.MapClaims)["nameid"], strGettoken)
+	}
+
+	return true
+}
+
 func (c *MainController) Get() {
 	c.Data["Website"] = "beego.me"
 	c.Data["Email"] = "astaxie@gmail.com"
 	c.TplName = "index.tpl"
+}
+
+func (this *CheckUserToken) Get() {
+	token := this.Ctx.Input.Header("Token")
+
+	t, err := jwt.Parse(token, func(*jwt.Token) (interface{}, error) {
+		return []byte(beego.AppConfig.String("jwtkey")), nil
+	})
+
+	strUser := t.Claims.(jwt.MapClaims)["nameid"]
+
+	conn, err := redis.Dial("tcp", "www.tangxinzhu.com:6379")
+	if err != nil {
+		fmt.Println("connect redis error :", err)
+		this.Data["json"] = map[string]interface{}{"status": Success}
+		this.ServeJSON()
+		return
+	}
+	conn.Do("AUTH", "passwd")
+	defer conn.Close()
+
+	_, err = conn.Do("expire", strUser, 7*24*60*60) //10秒过期
+	if err != nil {
+		fmt.Println("set expire error: ", err)
+	}
+
+	this.Data["json"] = map[string]interface{}{"status": Success}
+	this.ServeJSON()
 }
 
 func (this *Name) Get() {
@@ -97,17 +198,15 @@ func (this *Name) Get() {
 	strAuthority := this.Ctx.Input.Param(":authority")
 	strName := this.Ctx.Input.Param(":name")
 
-	if "Comic" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_comic_name" + " WHERE authority <= " + strAuthority + ";"
-	} else if "Fiction" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_fiction_name" + " WHERE authority <= " + strAuthority + ";"
-	}
+	strSql = fmt.Sprintf("SELECT * FROM EntertainmentDB.tbl_%s_name WHERE authority <= %s;", strName, strAuthority)
 
 	var stEntertainmentDBNames []models.EntertainmentDBName
 	nNum, err = o.Raw(strSql).QueryRows(&stEntertainmentDBNames)
 
 	if err == nil && nNum > 0 {
-		this.Data["json"] = map[string]interface{}{"data": stEntertainmentDBNames}
+		this.Data["json"] = map[string]interface{}{"status": Success, "data": stEntertainmentDBNames}
+	} else {
+		this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 	}
 	this.ServeJSON()
 	//this.StopRun()
@@ -127,17 +226,16 @@ func (this *NameKeyword) Get() {
 	strName := this.Ctx.Input.Param(":name")
 	strKeyword := this.Ctx.Input.Param(":keyword")
 
-	if "Comic" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_comic_name" + " WHERE authority <= " + strAuthority + " AND name LIKE \"%" + strKeyword + "%\";"
-	} else if "Fiction" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_fiction_name" + " WHERE authority <= " + strAuthority + " AND name LIKE \"%" + strKeyword + "%\";"
-	}
+	strSql = fmt.Sprintf("SELECT * FROM EntertainmentDB.tbl_%s_name WHERE authority <= %s AND name LIKE \"%%%s%%\";", strName, strAuthority, strKeyword)
 
 	var stEntertainmentDBNames []models.EntertainmentDBName
 	nNum, err = o.Raw(strSql).QueryRows(&stEntertainmentDBNames)
 	if err == nil && nNum > 0 {
-		this.Data["json"] = map[string]interface{}{"data": stEntertainmentDBNames}
+		this.Data["json"] = map[string]interface{}{"status": Success, "data": stEntertainmentDBNames}
+	} else {
+		this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 	}
+
 	this.ServeJSON()
 	this.StopRun()
 }
@@ -156,17 +254,16 @@ func (this *DataType) Get() {
 	strName := this.Ctx.Input.Param(":name")
 	strType := this.Ctx.Input.Param(":datatype")
 
-	if "Comic" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_comic_name" + " WHERE authority <= " + strAuthority + " AND type LIKE \"%" + strType + "%\";"
-	} else if "Fiction" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_fiction_name" + " WHERE authority <= " + strAuthority + " AND type LIKE \"%" + strType + "%\";"
-	}
+	strSql = fmt.Sprintf("SELECT * FROM EntertainmentDB.tbl_%s_name WHERE authority <= %s AND type LIKE \"%%%s%%\";", strName, strAuthority, strType)
 
 	var stEntertainmentDBNames []models.EntertainmentDBName
 	nNum, err = o.Raw(strSql).QueryRows(&stEntertainmentDBNames)
 	if err == nil && nNum > 0 {
-		this.Data["json"] = map[string]interface{}{"data": stEntertainmentDBNames}
+		this.Data["json"] = map[string]interface{}{"status": Success, "data": stEntertainmentDBNames}
+	} else {
+		this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 	}
+
 	this.ServeJSON()
 	this.StopRun()
 }
@@ -189,8 +286,8 @@ func (this *Chapter) Get() {
 	strEndNum := strconv.Itoa(nBeginNum + 400)
 
 	var nMaxChapter []int
-	if "Comic" == strName {
-		strSql = "SELECT MAX(chapter_num) FROM EntertainmentDB.tbl_comic_chapter  WHERE fk_id = " + strID + ";"
+	if "comic" == strName {
+		strSql = fmt.Sprintf("SELECT MAX(chapter_num) FROM EntertainmentDB.tbl_comic_chapter  WHERE fk_id = %s;", strID)
 
 		nNum, err = o.Raw(strSql).QueryRows(&nMaxChapter)
 		fmt.Println("nMaxChapter", nMaxChapter[0])
@@ -198,14 +295,17 @@ func (this *Chapter) Get() {
 			nMaxChapter[0] = 0
 		}
 
-		strSql = "SELECT * FROM EntertainmentDB.tbl_comic_chapter WHERE fk_id=" + strID + " and chapter_num > " + strBeginNum + " and chapter_num <=" + strEndNum + " ORDER BY chapter_num ASC;"
+		strSql = fmt.Sprintf("SELECT * FROM EntertainmentDB.tbl_comic_chapter WHERE fk_id = %s and chapter_num > %s  and chapter_num <= %s ORDER BY chapter_num ASC;;", strID, strBeginNum, strEndNum)
 		var stComicChapters []models.ComicChapter
 		nNum, err = o.Raw(strSql).QueryRows(&stComicChapters)
 		if err == nil && nNum > 0 {
-			this.Data["json"] = map[string]interface{}{"data": stComicChapters, "max_chapter": nMaxChapter[0]}
+			this.Data["json"] = map[string]interface{}{"status": Success, "data": stComicChapters, "max_chapter": nMaxChapter[0]}
+		} else {
+			this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 		}
-	} else if "Fiction" == strName {
-		strSql = "SELECT MAX(chapter_num) FROM EntertainmentDB.tbl_fiction_chapter  WHERE fk_id = " + strID + ";"
+
+	} else if "fiction" == strName {
+		strSql = fmt.Sprintf("SELECT MAX(chapter_num) FROM EntertainmentDB.tbl_fiction_chapter  WHERE fk_id = %s;", strID)
 
 		nNum, err = o.Raw(strSql).QueryRows(&nMaxChapter)
 		fmt.Println("nMaxChapter", nMaxChapter[0])
@@ -213,11 +313,13 @@ func (this *Chapter) Get() {
 			nMaxChapter[0] = 0
 		}
 
-		strSql = "SELECT * FROM EntertainmentDB.tbl_fiction_chapter WHERE fk_id	=" + strID + " and chapter_num > " + strBeginNum + " and chapter_num <=" + strEndNum + " ORDER BY chapter_num ASC;"
+		strSql = fmt.Sprintf("SELECT * FROM EntertainmentDB.tbl_fiction_chapter WHERE fk_id = %s and chapter_num > %s  and chapter_num <= %s ORDER BY chapter_num ASC;;", strID, strBeginNum, strEndNum)
 		var stFictionChapter []models.FictionChapter
 		nNum, err = o.Raw(strSql).QueryRows(&stFictionChapter)
 		if err == nil && nNum > 0 {
-			this.Data["json"] = map[string]interface{}{"data": stFictionChapter, "max_chapter": nMaxChapter[0]}
+			this.Data["json"] = map[string]interface{}{"status": Success, "data": stFictionChapter, "max_chapter": nMaxChapter[0]}
+		} else {
+			this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 		}
 	}
 
@@ -239,12 +341,14 @@ func (this *ChapterNum) Get() {
 	strID := this.Ctx.Input.Param(":id")
 	strNum := this.Ctx.Input.Param(":num")
 
-	if "Comic" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_comic_chapter WHERE fk_id = " + strID + " AND chapter_num = " + strNum + ";"
+	if "comic" == strName {
+		strSql = fmt.Sprintf("SELECT * FROM EntertainmentDB.tbl_comic_chapter WHERE fk_id = %s AND chapter_num = %s;", strID, strNum)
 		var stComicChapters []models.ComicChapter
 		nNum, err = o.Raw(strSql).QueryRows(&stComicChapters)
 		if err == nil && nNum > 0 {
-			this.Data["json"] = map[string]interface{}{"data": stComicChapters}
+			this.Data["json"] = map[string]interface{}{"status": Success, "data": stComicChapters}
+		} else {
+			this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 		}
 	}
 
@@ -266,23 +370,23 @@ func (this *ChapterContent) Get() {
 	strID := this.Ctx.Input.Param(":id")
 	strNum := this.Ctx.Input.Param(":num")
 
-	if "Comic" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_comic_img WHERE fk_comic_id = " + strID + " AND fk_comic_chapter_id = " + strNum + ";"
+	if "comic" == strName {
+		strSql = fmt.Sprintf("SELECT * FROM EntertainmentDB.tbl_comic_img WHERE fk_comic_id = %s AND fk_comic_chapter_id = %s;", strID, strNum)
 		var stComicImgSrcs []models.ComicImgSrc
 		nNum, err = o.Raw(strSql).QueryRows(&stComicImgSrcs)
 		if err == nil && nNum > 0 {
-			this.Data["json"] = map[string]interface{}{"status": 1, "data": stComicImgSrcs}
+			this.Data["json"] = map[string]interface{}{"status": Success, "data": stComicImgSrcs}
 		} else {
-			this.Data["json"] = map[string]interface{}{"status": -1, "err": err}
+			this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 		}
-	} else if "Fiction" == strName {
-		strSql = "SELECT * FROM EntertainmentDB.tbl_fiction_chapter WHERE fk_id=" + strID + " AND chapter_num = " + strNum + ";"
+	} else if "fiction" == strName {
+		strSql = fmt.Sprintf("SELECT * FROM EntertainmentDB.tbl_fiction_chapter WHERE fk_id = %s AND chapter_num = %s;", strID, strNum)
 		var stFictionChapter []models.FictionChapter
 		nNum, err = o.Raw(strSql).QueryRows(&stFictionChapter)
 		if err == nil && nNum > 0 {
-			this.Data["json"] = map[string]interface{}{"status": 1, "data": stFictionChapter}
+			this.Data["json"] = map[string]interface{}{"status": Success, "data": stFictionChapter}
 		} else {
-			this.Data["json"] = map[string]interface{}{"status": -1, "err": err}
+			this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 		}
 	}
 
@@ -301,15 +405,15 @@ func (this *Register) Post() {
 
 	strUser := this.GetString("user")
 	strPasswd := this.GetString("password")
-	strSql = "INSERT INTO EntertainmentDB.user_info (user_name, user_password) VALUES (" + "\"" + strUser + "\",\"" + strPasswd + "\");"
-	rows, err := o.Raw(strSql).Exec()
 
+	strSql = fmt.Sprintf("INSERT INTO EntertainmentDB.user_info (user_name, user_password) VALUES ( \"%s\", \"%s\");", strUser, strPasswd)
+	rows, err := o.Raw(strSql).Exec()
 	if err == nil {
 		o.Commit()
-		this.Data["json"] = map[string]interface{}{"status": 1, "rows": rows}
+		this.Data["json"] = map[string]interface{}{"status": Success, "rows": rows}
 	} else {
 		o.Rollback()
-		this.Data["json"] = map[string]interface{}{"status": -1, "err": err}
+		this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 	}
 
 	this.ServeJSON()
@@ -329,13 +433,52 @@ func (this *Login) Post() {
 	strUser := this.GetString("user")
 	strPasswd := this.GetString("password")
 
-	strSql = "SELECT * FROM EntertainmentDB.user_info WHERE user_name = " + "\"" + strUser + "\"" + " AND user_password = " + "\"" + strPasswd + "\";"
+	strSql = fmt.Sprintf("SELECT user_name, user_authority, user_setting FROM EntertainmentDB.user_info WHERE user_name = \"%s\" AND user_password = \"%s\";", strUser, strPasswd)
 	var stUser []models.User
 	nNum, err = o.Raw(strSql).QueryRows(&stUser)
 	if err == nil && nNum > 0 {
-		this.Data["json"] = map[string]interface{}{"status": 1, "rows": stUser}
+
+		claims := make(jwt.MapClaims)
+		claims["exp"] = time.Now().Add(time.Hour * time.Duration(1)).Unix()
+		claims["iat"] = time.Now().Unix()
+		claims["nameid"] = strUser
+		claims["User"] = "true"
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+		tokenString, err := token.SignedString([]byte(beego.AppConfig.String("jwtkey")))
+		if err != nil {
+			this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
+
+		} else {
+			fmt.Println("Token:", tokenString)
+			this.Data["json"] = map[string]interface{}{"status": Success, "rows": stUser, "Token": tokenString}
+
+			conn, err := redis.Dial("tcp", "www.tangxinzhu.com:6379")
+			if err != nil {
+				fmt.Println("connect redis error :", err)
+				return
+			}
+			conn.Do("AUTH", "passwd")
+			defer conn.Close()
+
+			token, err := redis.String(conn.Do("GET", strUser))
+			if err != nil {
+				_, err = conn.Do("SET", strUser, tokenString)
+				if err != nil {
+					fmt.Println("redis set error:", err)
+				}
+
+				_, err = conn.Do("expire", strUser, 7*24*60*60) //10秒过期
+				if err != nil {
+					fmt.Println("set expire error: ", err)
+				}
+			} else {
+				fmt.Printf("Get [%s]: %s \n", strUser, token)
+			}
+		}
+
 	} else {
-		this.Data["json"] = map[string]interface{}{"status": -1, "err": err}
+		this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 	}
 
 	this.ServeJSON()
@@ -353,15 +496,15 @@ func (this *ChangeSetting) Post() {
 
 	strUser := this.GetString("user")
 	strSetting := this.GetString("setting")
-	strSql = "UPDATE EntertainmentDB.user_info SET user_setting = " + "\"" + strSetting + "\"" + " WHERE user_name = " + "\"" + strUser + "\";"
 
+	strSql = fmt.Sprintf("UPDATE EntertainmentDB.user_info SET user_setting = \"%s\" WHERE user_name = \"%s\";", strSetting, strUser)
 	rows, err := o.Raw(strSql).Exec()
 	if err == nil {
 		o.Commit()
-		this.Data["json"] = map[string]interface{}{"status": 1, "rows": rows}
+		this.Data["json"] = map[string]interface{}{"status": Success, "rows": rows}
 	} else {
 		o.Rollback()
-		this.Data["json"] = map[string]interface{}{"status": -1, "err": err}
+		this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 	}
 
 	this.ServeJSON()
@@ -384,13 +527,13 @@ func (this *UserCookie) Post() {
 	strChapterName := this.GetString("ChapterName")
 	strReadNum := this.GetString("ReadNum")
 
-	strWhereinfo := " WHERE cookie_type = " + "\"" + strCookieType + "\"" + " AND name_id = " + strNameID + " AND fk_user = " + "\"" + strUser + "\";"
+	strWhereinfo := fmt.Sprintf(" WHERE cookie_type = \"%s\" AND name_id = %s AND fk_user = \"%s\";", strCookieType, strNameID, strUser)
+	strSql = fmt.Sprintf("SELECT pk_id FROM EntertainmentDB.user_cookie %s", strWhereinfo)
 
-	strSql = "SELECT pk_id FROM EntertainmentDB.user_cookie" + strWhereinfo
 	var nID []int
 	nNum, err = o.Raw(strSql).QueryRows(&nID)
 	if err == nil && nNum > 0 {
-		if strCookieType == "Fiction" {
+		if strCookieType == "fiction" {
 			strReadUrl := this.GetString("ReadUrl")
 			strSql = "UPDATE EntertainmentDB.user_cookie SET chapter_name = " + "\"" + strChapterName +
 				"\",cur_read_id = " + strReadNum +
@@ -407,7 +550,7 @@ func (this *UserCookie) Post() {
 				strWhereinfo
 		}
 	} else {
-		if strCookieType == "Fiction" {
+		if strCookieType == "fiction" {
 			strReadUrl := this.GetString("ReadUrl")
 			strSql = "INSERT into EntertainmentDB.user_cookie (cookie_type, name_id, chapter_name, cur_read_id, cur_read_src, fk_user) VALUES (" +
 				"\"" + strCookieType + "\"," +
@@ -429,10 +572,10 @@ func (this *UserCookie) Post() {
 	rows, err := o.Raw(strSql).Exec()
 	if err == nil {
 		o.Commit()
-		this.Data["json"] = map[string]interface{}{"status": 1, "rows": rows}
+		this.Data["json"] = map[string]interface{}{"status": Success, "rows": rows}
 	} else {
 		o.Rollback()
-		this.Data["json"] = map[string]interface{}{"status": -1, "err": err}
+		this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 	}
 
 	this.ServeJSON()
@@ -452,14 +595,15 @@ func (this *GetCookie) Get() {
 	strType := this.Ctx.Input.Param(":type")
 	strUser := this.Ctx.Input.Param(":user")
 	strNameID := this.Ctx.Input.Param(":nameid")
-	strSql = "SELECT * FROM EntertainmentDB.user_cookie WHERE cookie_type = " + "\"" + strType + "\"" + " AND name_id = " + strNameID + " AND fk_user = " + "\"" + strUser + "\";"
+
+	strSql = fmt.Sprintf("SELECT * FROM EntertainmentDB.user_cookie WHERE cookie_type = \"%s\"  AND name_id = %s AND fk_user = \"%s\";", strType, strNameID, strUser)
 
 	var stUserCookies []models.UserCookie
 	nNum, err = o.Raw(strSql).QueryRows(&stUserCookies)
 	if err == nil && nNum > 0 {
-		this.Data["json"] = map[string]interface{}{"status": 1, "data": stUserCookies}
+		this.Data["json"] = map[string]interface{}{"status": Success, "data": stUserCookies}
 	} else {
-		this.Data["json"] = map[string]interface{}{"status": -1, "err": err}
+		this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 	}
 
 	this.ServeJSON()
@@ -468,7 +612,7 @@ func (this *GetCookie) Get() {
 
 func (this *GetLiveBasketBall) Get() {
 
-	this.Data["json"] = map[string]interface{}{"status": 1, "data": models.MapBasketballMatchInfo}
+	this.Data["json"] = map[string]interface{}{"status": Success, "data": models.MapBasketballMatchInfo}
 
 	this.ServeJSON()
 	this.StopRun()
@@ -490,8 +634,7 @@ func (this *GetBasketBallAnalyse) Get() {
 
 	var stMatchInfo []models.BasketballMatchInfo
 	var stAnalyseInfo models.BasketballAnalyseInfo
-
-	strSql = "SELECT * FROM Bet365.leisu_basketball_data where " + strHV + "_name like \"%" + strTeamName + "%\" and name like \"%" + strName + "%\" and match_time like \"2018%\" ORDER BY match_time desc LIMIT 20; "
+	strSql = fmt.Sprintf("SELECT * FROM Bet365.leisu_basketball_data where %s_name like \"%%%s%% and name like \"%%%s%% and match_time like \"2018%%\" ORDER BY match_time desc LIMIT 20;", strHV, strTeamName, strName)
 	nNum, err = o.Raw(strSql).QueryRows(&stMatchInfo)
 
 	for i := 0; i < len(stMatchInfo); i++ {
@@ -581,6 +724,7 @@ func (this *GetBasketBallAnalyse) Get() {
 }
 
 func (this *GetLiveFootBall) Get() {
+	fmt.Println("GetLiveFootBall")
 	MapGoalStatics := make(map[string](models.FootballGoalStatics))
 
 	for key, _ := range models.MapFootballMatchInfo {
@@ -590,22 +734,23 @@ func (this *GetLiveFootBall) Get() {
 		}
 	}
 
-	this.Data["json"] = map[string]interface{}{"status": 1, "data": MapGoalStatics}
+	this.Data["json"] = map[string]interface{}{"status": Success, "data": MapGoalStatics}
 
 	this.ServeJSON()
 	this.StopRun()
 }
 
 func (this *GetFootBallAnalyse) Get() {
+	fmt.Println("GetFootBallAnalyse")
 	strName := this.Ctx.Input.Param(":Name")
 
 	_, ok := models.MapFootballMatchInfo[strName]
 	fmt.Println(ok, strName)
 	if ok {
-		this.Data["json"] = map[string]interface{}{"status": 1, "data": models.MapFootballMatchInfo[strName], "over": models.MapFootballOverMatchInfo[strName], "analyse": models.MapFootballGoalStatics[strName]}
+		this.Data["json"] = map[string]interface{}{"status": Success, "data": models.MapFootballMatchInfo[strName], "over": models.MapFootballOverMatchInfo[strName], "analyse": models.MapFootballGoalStatics[strName]}
 		fmt.Println(models.MapFootballGoalStatics[strName])
 	} else {
-		this.Data["json"] = map[string]interface{}{"status": -1}
+		this.Data["json"] = map[string]interface{}{"status": Failed}
 	}
 
 	this.ServeJSON()
@@ -674,9 +819,9 @@ func (this *GetFootBallTeamAnalyse) Get() {
 	}
 
 	if err == nil && nNum > 0 {
-		this.Data["json"] = map[string]interface{}{"status": 1, "data": strStatics}
+		this.Data["json"] = map[string]interface{}{"status": Success, "data": strStatics}
 	} else {
-		this.Data["json"] = map[string]interface{}{"status": -1, "err": err}
+		this.Data["json"] = map[string]interface{}{"status": Failed, "err": err}
 	}
 
 	this.ServeJSON()

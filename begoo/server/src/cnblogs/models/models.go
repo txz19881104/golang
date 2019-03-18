@@ -56,7 +56,6 @@ type UserCookie struct {
 
 type User struct {
 	UserName      string `orm:"column(user_name)"`
-	UserPassword  string `orm:"column(user_password)"`
 	UserAuthority string `orm:"column(user_authority)"`
 	UserSetting   string `orm:"column(user_setting)"`
 }
@@ -177,6 +176,7 @@ var (
 )
 
 func init() {
+	fmt.Println("数据库连接中！")
 	orm.RegisterDriver("mysql", orm.DRMySQL)
 	orm.RegisterDataBase("default", "mysql", "root:passwd@tcp(149.129.79.183:3306)/EntertainmentDB?charset=utf8")
 	orm.SetMaxIdleConns("default", 1000)
